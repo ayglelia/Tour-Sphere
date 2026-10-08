@@ -85,14 +85,12 @@ if (!is_dir($uploadDir)) {
     }
 }
 
-/* Generate a safe unique filename */
-$safeName = preg_replace('/[^A-Za-z0-9._-]/', '_', $originalName);
 
-$storedName =
-    $documentId . '_' .
-    preg_replace('/[^A-Za-z0-9._-]/', '_', $version) . '_' .
-    uniqid('', true) . '_' .
-    $safeName;
+/* Generate a private, unique filename */
+$storedName = 'DV_' .
+    bin2hex(random_bytes(16)) .
+    '.' . $extension;
+
 
 $targetPath = $uploadDir . $storedName;
 
@@ -101,7 +99,7 @@ if (!move_uploaded_file($file['tmp_name'], $targetPath)) {
 }
 
 /* Path stored in the database */
-$dbPath = 'uploads/document_versions/' . $storedName;
+$dbPath = $storedName;
 
 try {
 

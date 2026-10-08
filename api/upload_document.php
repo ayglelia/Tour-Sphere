@@ -207,18 +207,25 @@ if ($safeBase === '') {
     $safeBase = 'document';
 }
 
-$storedName =
-    $id .
-    '_' .
-    time() .
-    '_' .
-    $safeBase .
-    '.' .
-    $extension;
 
-$uploadDir =
-    dirname(__DIR__) .
-    '/uploads/documents';
+$storedName = 'DOC_' .
+    bin2hex(random_bytes(16)) .
+    '.' . $extension;
+
+
+
+$uploadDir = getenv('DOCUMENT_STORAGE_DIR');
+
+if (!$uploadDir || !str_starts_with($uploadDir, '/')) {
+    http_response_code(500);
+    echo json_encode([
+        'error' => 'Private document storage is not configured.'
+    ]);
+    exit;
+}
+
+$uploadDir = rtrim($uploadDir, '/');
+
 
 if (!is_dir($uploadDir)) {
 
@@ -256,9 +263,9 @@ if (!move_uploaded_file(
 $version = 'v1.0';
 $status = 'Active';
 
-$relativePath =
-    'uploads/documents/' .
-    $storedName;
+
+$relativePath = $storedName;
+
 
 try {
 
