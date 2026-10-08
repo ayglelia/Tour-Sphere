@@ -39,7 +39,7 @@ if (!$file || empty($file['file_path'])) {
 // Private storage location
 $storageDir = getenv('LEGAL_CASE_STORAGE_DIR');
 
-if (!$storageDir || !str_starts_with($storageDir, '/')) {
+if (!is_absolute_storage_path($storageDir)) {
     http_response_code(500);
     exit('Private legal case storage is not configured.');
 }

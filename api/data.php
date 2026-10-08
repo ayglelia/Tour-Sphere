@@ -26,8 +26,8 @@ $RESOURCES = [
     ],
 
     'blacklist' => [
-        'table' => 'blacklist', 'idField' => 'id', 'autoId' => false, 'order' => 'id DESC',
-        'map' => ['id'=>'id','name'=>'name','reason'=>'reason','dateAdded'=>'date_added'],
+        'table' => 'blacklist', 'idField' => 'id', 'autoId' => true, 'order' => 'id DESC',
+        'map' => ['id'=>'id','name'=>'name','reason'=>'reason','date'=>'date'],
         'writeRoles' => ['Admin','Front Desk / Operations','Records & Audit Officer'],
     ],
 

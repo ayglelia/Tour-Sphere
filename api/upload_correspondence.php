@@ -113,7 +113,7 @@ if (!$stmt->fetch()) {
 
 $uploadDir = getenv('CORRESPONDENCE_STORAGE_DIR');
 
-if (!$uploadDir || !str_starts_with($uploadDir, '/')) {
+if (!is_absolute_storage_path($uploadDir)) {
     http_response_code(500);
     echo json_encode([
         'ok' => false,

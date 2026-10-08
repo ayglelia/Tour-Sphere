@@ -46,7 +46,7 @@ if (!$file || empty($file['file_path'])) {
 
 $storageDir = getenv('CONTRACT_STORAGE_DIR');
 
-if (!$storageDir || !str_starts_with($storageDir, '/')) {
+if (!is_absolute_storage_path($storageDir)) {
     http_response_code(500);
     exit('Private contract storage is not configured.');
 }

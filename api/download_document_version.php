@@ -33,7 +33,7 @@ if (!$version || empty($version['file_path'])) {
 // Read private storage location.
 $storageDir = getenv('DOCUMENT_VERSION_STORAGE_DIR');
 
-if (!$storageDir || !str_starts_with($storageDir, '/')) {
+if (!is_absolute_storage_path($storageDir)) {
     http_response_code(500);
     exit('Private document version storage is not configured.');
 }

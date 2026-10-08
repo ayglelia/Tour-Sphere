@@ -70,7 +70,7 @@ if (!isset($allowed[$extension])) {
 /* Private document version storage */
 $uploadDir = getenv('DOCUMENT_VERSION_STORAGE_DIR');
 
-if (!$uploadDir || !str_starts_with($uploadDir, '/')) {
+if (!is_absolute_storage_path($uploadDir)) {
     respond([
         'error' => 'Private document version storage is not configured.'
     ], 500);
