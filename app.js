@@ -62,6 +62,69 @@ const TABLES = {
 };
 
 let SESSION = null; // {id, fullName, role, email} once signed in
+let editingFacilityId = null;
+let editingComplianceId = null;
+
+
+function showTourSphereToast(message){
+
+  let toast = document.getElementById('toursphere-toast');
+
+  if(!toast){
+    toast = document.createElement('div');
+    toast.id = 'toursphere-toast';
+
+    Object.assign(toast.style, {
+      position: 'fixed',
+      bottom: '24px',
+      right: '24px',
+      maxWidth: '340px',
+      width: 'calc(100% - 48px)',
+      padding: '16px 20px',
+      background: '#ffffff',
+      color: '#263238',
+      borderLeft: '4px solid #2f80ed',
+      borderRadius: '12px',
+      boxShadow: '0 8px 30px rgba(0,0,0,0.18)',
+      zIndex: '99999',
+      display: 'none'
+    });
+
+    toast.setAttribute('role', 'status');
+    toast.setAttribute('aria-live', 'polite');
+
+    document.body.appendChild(toast);
+  }
+
+  toast.replaceChildren();
+
+  const title = document.createElement('div');
+  title.textContent = 'Tour-Sphere';
+
+  Object.assign(title.style, {
+    fontWeight: '700',
+    color: '#2f80ed',
+    fontSize: '15px',
+    marginBottom: '5px'
+  });
+
+  const text = document.createElement('div');
+  text.textContent = message;
+  text.style.fontSize = '13px';
+  text.style.lineHeight = '1.5';
+
+  toast.appendChild(title);
+  toast.appendChild(text);
+
+  toast.style.display = 'block';
+
+  clearTimeout(showTourSphereToast.timer);
+
+  showTourSphereToast.timer = setTimeout(() => {
+    toast.style.display = 'none';
+  }, 4000);
+}
+
 
 async function apiCall(method, resource, opts={}){
   let url = `${API_DATA}?resource=${resource}`;
@@ -165,8 +228,10 @@ async function handleAddStaff(e){
   const saved = await usersCall('POST', {body});
   if(!saved) return;
   STAFF.push(saved);
-  logActivity(`Staff account created for ${saved.fullName} (${saved.role}).`);
-  render();
+logActivity(`Staff account created for ${saved.fullName} (${saved.role}).`);
+render();
+
+showTourSphereToast('Staff account created successfully!');
 }
 async function handleDeleteStaff(id, name){
   if(!confirm(`Delete the staff account for ${name}? This can't be undone.`)) return;
@@ -174,7 +239,9 @@ async function handleDeleteStaff(id, name){
   if(!ok) return;
   STAFF = STAFF.filter(u=>u.id!==id);
   logActivity(`Staff account removed: ${name}.`);
-  render();
+render();
+
+showTourSphereToast('Staff account deleted successfully!');
 }
 async function handleChangeStaffRole(id, name, newRole){
   const saved = await usersCall('PUT', {id, body:{role:newRole}});
@@ -182,7 +249,9 @@ async function handleChangeStaffRole(id, name, newRole){
   const idx = STAFF.findIndex(u=>u.id===id);
   if(idx>-1) STAFF[idx] = saved;
   logActivity(`${name}'s role changed to ${newRole}.`);
-  render();
+render();
+
+showTourSphereToast('Staff role updated successfully!');
 }
 
 
@@ -344,6 +413,7 @@ async function handleResetStaffPassword(event, userId){
 
     result.append(message, passwordDisplay, note, closeBtn);
     modal.querySelector('[role="dialog"]').appendChild(result);
+    showTourSphereToast('Staff password reset successfully!');
 
   } catch (error) {
     errorBox.textContent = error.message || 'Something went wrong.';
@@ -964,6 +1034,7 @@ function renderDashboard(){
    FACILITIES RESERVATION
    ============================================================ */
 
+
 async function handleAddFacility(event){
   event.preventDefault();
 
@@ -973,7 +1044,7 @@ async function handleAddFacility(event){
   }
 
   if(!['Admin', 'Facilities & Compliance Officer'].includes(SESSION.role)){
-    alert('You do not have permission to add facilities.');
+    alert('You do not have permission to manage facilities.');
     return;
   }
 
@@ -986,30 +1057,187 @@ async function handleAddFacility(event){
     return;
   }
 
-  const facility = {
-    id: nextId('FA'),
-    name,
-    type,
-    capacity
-  };
+  const isEditing = editingFacilityId !== null;
 
-  const saved = await dbInsert('facilities', facility);
+  const duplicate = DB.facilities.some(f =>
+    f.id !== editingFacilityId &&
+    f.name.toLowerCase() === name.toLowerCase()
+  );
+
+  if(duplicate){
+    alert('Another facility already has this name.');
+    return;
+  }
+
+  let saved;
+
+  if(isEditing){
+    const existing = DB.facilities.find(f => f.id === editingFacilityId);
+
+    if(!existing){
+      alert('Facility not found.');
+      return;
+    }
+
+    if(name !== existing.name &&
+       DB.bookings.some(b => b.facility === existing.name)){
+      alert('This facility has existing bookings. Its name cannot be changed yet.');
+      return;
+    }
+
+    saved = await dbUpdate('facilities', 'id', editingFacilityId, {
+      name,
+      type,
+      capacity
+    });
+
+  }else{
+    saved = await dbInsert('facilities', {
+      id: nextId('FA'),
+      name,
+      type,
+      capacity
+    });
+  }
 
   if(saved){
-    alert('Facility added successfully!');
+    editingFacilityId = null;
+    showTourSphereToast(isEditing
+  ? 'Facility updated successfully!'
+  : 'Facility added successfully!'
+);
     render();
   }
 }
 
 
+
+async function handleEditFacility(id){
+
+  if(!LIVE || !SESSION ||
+     !['Admin', 'Facilities & Compliance Officer'].includes(SESSION.role)){
+    alert('You do not have permission to edit facilities.');
+    return;
+  }
+
+  const facility = DB.facilities.find(f => f.id === id);
+
+  if(!facility){
+    alert('Facility not found.');
+    return;
+  }
+
+  const name = prompt('Edit Facility Name:', facility.name);
+  if(name === null) return;
+
+  const type = prompt('Edit Facility Type:', facility.type);
+  if(type === null) return;
+
+  const capacityInput = prompt('Edit Capacity:', facility.capacity);
+  if(capacityInput === null) return;
+
+  const newName = name.trim();
+  const newType = type.trim();
+  const capacity = Number(capacityInput.trim());
+
+  if(!newName || !newType ||
+     !Number.isInteger(capacity) || capacity < 1){
+    alert('Please enter a valid name, type, and capacity.');
+    return;
+  }
+
+  const duplicate = DB.facilities.some(f =>
+    f.id !== id &&
+    f.name.toLowerCase() === newName.toLowerCase()
+  );
+
+  if(duplicate){
+    alert('Another facility already has this name.');
+    return;
+  }
+
+  // Existing bookings identify facilities by name.
+  // Avoid breaking their references when renaming a facility.
+  if(newName !== facility.name &&
+     DB.bookings.some(b => b.facility === facility.name)){
+    alert(
+      'This facility has existing bookings. ' +
+      'Its name cannot be changed until those bookings are handled safely. ' +
+      'You can still edit its type or capacity.'
+    );
+    return;
+  }
+
+  const saved = await dbUpdate('facilities', 'id', id, {
+    name: newName,
+    type: newType,
+    capacity
+  });
+
+  if(saved){
+    alert('Facility updated successfully!');
+    render();
+  }
+}
+
+
+function startEditFacility(id){
+  const facility = DB.facilities.find(
+    f => String(f.id) === String(id)
+  );
+
+  if(!facility){
+    alert('Facility not found.');
+    return;
+  }
+
+  editingFacilityId = facility.id;
+  render();
+
+  const nameInput = document.getElementById('facility_name');
+  const typeInput = document.getElementById('facility_type');
+  const capacityInput = document.getElementById('facility_capacity');
+
+  if(!nameInput || !typeInput || !capacityInput){
+    alert('Facility form not found.');
+    return;
+  }
+
+  nameInput.value = facility.name;
+  typeInput.value = facility.type;
+  capacityInput.value = facility.capacity;
+
+  nameInput.scrollIntoView({
+    behavior: 'smooth',
+    block: 'center'
+  });
+
+  nameInput.focus();
+}
+
+
+function cancelEditFacility(){
+  editingFacilityId = null;
+  render();
+}
+
 function facilitiesListing(){
-  const canAdd = SESSION && [
+    const isEditing = editingFacilityId !== null;
+  const canEdit = SESSION && [
     'Admin',
     'Facilities & Compliance Officer'
   ].includes(SESSION.role);
 
-  const addForm = canAdd ? card('Add New Facility', `
+  const escapeHTML = value => String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+  const addForm = canEdit ? card(isEditing ? 'Edit Facility' : 'Add New Facility', `
     <form onsubmit="handleAddFacility(event)">
+
       <div class="field">
         <label for="facility_name">Facility Name</label>
         <input id="facility_name" required
@@ -1029,24 +1257,44 @@ function facilitiesListing(){
                placeholder="Example: 20">
       </div>
 
-      <button class="btn" type="submit">
-        Add Facility
-      </button>
+      
+<button class="btn" type="submit">
+  ${isEditing ? 'Update Facility' : 'Add Facility'}
+</button>
+
+${isEditing ? `
+  <button class="btn btn-ghost"
+          type="button"
+          onclick="cancelEditFacility()">
+    Cancel Edit
+  </button>
+` : ''}
+
+
     </form>
   `) : '';
 
   const listing = card('Registered Facilities & Resources', table(
-    ['ID','Name','Type','Capacity'],
-    DB.facilities.map(f=>[
-      `<span class="id">${f.id}</span>`,
-      f.name,
-      f.type,
-      f.capacity
+    ['ID', 'Name', 'Type', 'Capacity', 'Actions'],
+
+    DB.facilities.map(f => [
+      `<span class="id">${escapeHTML(f.id)}</span>`,
+      escapeHTML(f.name),
+      escapeHTML(f.type),
+      escapeHTML(f.capacity),
+
+      canEdit
+        ? `<button class="btn btn-sm"
+                   onclick='startEditFacility(${JSON.stringify(f.id).replace(/'/g, '&#39;')})'>
+             Edit
+           </button>`
+        : '—'
     ])
   ));
 
-  return addForm + listing;
+  return listing + addForm;
 }
+
 
 function facilitiesBooking(){
   const opts = DB.facilities.map(f=>`<option>${f.name}</option>`).join('');
@@ -1092,8 +1340,8 @@ function facilitiesCheckin(){
   </div>
   <div class="section-title">Simulate scan</div>
   ${card("Today's Check-in Activity", table(
-    ['ID','Facility','Status',''],
-    DB.bookings.map(b=>[`<span class="id">${b.id}</span>`, b.facility, stamp(b.status),
+    ['ID','Facility','Requested By','Status',''],
+    DB.bookings.map(b=>[`<span class="id">${b.id}</span>`, b.facility, b.requestedBy || '—', stamp(b.status),
       b.status==='Approved' ? `<button class="btn btn-sm" onclick="scanFacility('${b.id}')">Scan → Check-in</button>` :
       b.status==='Checked-in' ? `<button class="btn btn-sm btn-ghost" onclick="completeFacility('${b.id}')">Scan → Check-out</button>` : '—'
     ])
@@ -1203,7 +1451,7 @@ function visitorsHost(){
   return card('Host Notifications', table(
     ['Visitor','Host','Status',''],
     DB.visitors.map(v=>[v.name, v.host, v.notified?stamp('Notified'):stamp('Pending'),
-      v.notified ? '—' : `<button class="btn btn-sm" onclick="notifyHost('${v.id}')">Send notification</button>`])
+      v.notified ? '—' : `<button class="btn btn-sm" onclick="notifyHost('${v.id}')">Mark as Notified</button>`])
   ));
 }
 function visitorsHistory(){
@@ -1316,7 +1564,7 @@ function documentsUpload(){
             <input
               type="date"
               id="dc_date_added"
-              value="${new Date().toISOString().slice(0,10)}"
+              value="${todayStr()}"
               required
             >
 
@@ -2087,7 +2335,7 @@ async function handleAddRetentionSchedule(event){
       years: result.years
     });
 
-    alert('Retention schedule added successfully!');
+    showTourSphereToast('Retention schedule added successfully!');
     render();
 
   } catch(error) {
@@ -2145,7 +2393,7 @@ function retentionSchedule(){
     </p>
   `);
 
-  return addForm + listing;
+  return listing + addForm;
 }
 
 function retentionAlerts(){
@@ -2222,7 +2470,7 @@ async function handleAddComplianceItem(event){
   ];
 
   if(!allowedRoles.includes(SESSION.role)){
-    alert('You do not have permission to add checklist items.');
+    alert('You do not have permission to manage checklist items.');
     return;
   }
 
@@ -2234,27 +2482,109 @@ async function handleAddComplianceItem(event){
     return;
   }
 
-  if(DB.complianceChecklist.some(
-    row => row.item.toLowerCase() === item.toLowerCase()
-  )){
+  const isEditing = editingComplianceId !== null;
+
+  if(isEditing){
+    const existing = DB.complianceChecklist.find(
+      row => Number(row.id) === Number(editingComplianceId)
+    );
+
+    if(!existing){
+      alert('Checklist item not found.');
+      return;
+    }
+  }
+
+  const duplicate = DB.complianceChecklist.some(
+    row =>
+      (!isEditing || Number(row.id) !== Number(editingComplianceId)) &&
+      row.item.toLowerCase() === item.toLowerCase()
+  );
+
+  if(duplicate){
     alert('This checklist item already exists.');
     return;
   }
 
-  const saved = await dbInsert('complianceChecklist', {
-    item,
-    completed: false
-  });
+  let saved;
+
+  if(isEditing){
+    saved = await dbUpdate(
+      'complianceChecklist',
+      'id',
+      editingComplianceId,
+      { item }
+    );
+  }else{
+    saved = await dbInsert('complianceChecklist', {
+      item,
+      completed: false
+    });
+  }
 
   if(saved){
-    alert('Compliance checklist item added successfully!');
+    editingComplianceId = null;
+
+    showTourSphereToast(isEditing
+  ? 'Compliance checklist item updated successfully!'
+  : 'Compliance checklist item added successfully!'
+);
+
     render();
   }
 }
 
 
+
+function startEditCompliance(id){
+
+  if(!SESSION || ![
+    'Admin',
+    'Facilities & Compliance Officer',
+    'Records & Audit Officer'
+  ].includes(SESSION.role)){
+    alert('You do not have permission to edit checklist items.');
+    return;
+  }
+
+  const item = DB.complianceChecklist.find(
+    c => Number(c.id) === Number(id)
+  );
+
+  if(!item){
+    alert('Checklist item not found.');
+    return;
+  }
+
+  editingComplianceId = Number(item.id);
+
+  render();
+
+  const input = document.getElementById('compliance_item');
+
+  if(input){
+    input.value = item.item;
+
+    input.scrollIntoView({
+      behavior: 'smooth',
+      block: 'center'
+    });
+
+    input.focus();
+  }
+}
+
+
+function cancelEditCompliance(){
+  editingComplianceId = null;
+  render();
+}
+
+
+
 function retentionCompliance(){
 
+  const isEditing = editingComplianceId !== null;
   const items = DB.complianceChecklist || [];
 
   const allowedRoles = [
@@ -2273,87 +2603,179 @@ function retentionCompliance(){
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
-  const addForm = canAdd ? card('Add Compliance Checklist Item', `
-    <form onsubmit="handleAddComplianceItem(event)">
+  // Add / Edit form
+  const addForm = canAdd ? card(
+    isEditing
+      ? 'Edit Compliance Checklist Item'
+      : 'Add Compliance Checklist Item',
+    `
+      <form onsubmit="handleAddComplianceItem(event)">
 
-      <div class="field">
-        <label for="compliance_item">Checklist Item</label>
+        <div class="field">
+          <label for="compliance_item">Checklist Item</label>
 
-        <input
-          id="compliance_item"
-          required
-          maxlength="255"
-          placeholder="Example: Review safety inspection requirements"
-        >
-      </div>
+          <input
+            id="compliance_item"
+            required
+            maxlength="255"
+            placeholder="Example: Review safety inspection requirements"
+          >
+        </div>
 
-      <button class="btn" type="submit">
-        Add Checklist Item
-      </button>
+        <div style="
+          display:flex;
+          align-items:center;
+          gap:10px;
+          flex-wrap:wrap;
+          margin-top:12px;
+        ">
 
-    </form>
-  `) : '';
+          <button class="btn" type="submit">
+            ${isEditing ? 'Update Checklist Item' : 'Add Checklist Item'}
+          </button>
 
+          ${isEditing ? `
+            <button
+              class="btn btn-ghost"
+              type="button"
+              onclick="cancelEditCompliance()"
+            >
+              Cancel Edit
+            </button>
+          ` : ''}
+
+        </div>
+
+      </form>
+    `
+  ) : '';
+
+  // Compliance checklist with aligned Edit buttons
   const checklistContent = items.length
     ? `
       <div>
+
         ${items.map(item => `
-          <label
-            style="
+
+          <div style="
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:16px;
+            padding:14px 0;
+            border-bottom:1px solid var(--line-soft);
+          ">
+
+            <label style="
               display:flex;
               align-items:flex-start;
-              gap:10px;
-              padding:10px 0;
-              border-bottom:1px solid var(--line-soft);
+              gap:12px;
+              flex:1;
+              min-width:0;
               font-size:13px;
               cursor:pointer;
-            "
-          >
+            ">
 
-            <input
-              type="checkbox"
-              ${Number(item.completed) === 1 ? 'checked' : ''}
-              onchange="updateComplianceChecklist(${Number(item.id)}, this.checked)"
-              style="margin-top:3px;"
-            >
+              <input
+                type="checkbox"
+                ${Number(item.completed) === 1 ? 'checked' : ''}
+                onchange="updateComplianceChecklist(${Number(item.id)}, this.checked)"
+                style="
+                  margin-top:3px;
+                  flex-shrink:0;
+                "
+              >
 
-            <div style="flex:1;">
+              <div style="
+                flex:1;
+                min-width:0;
+              ">
 
-              <div>${escapeText(item.item)}</div>
+                <div style="
+                  font-size:13px;
+                  line-height:1.5;
+                  overflow-wrap:anywhere;
+                ">
+                  ${escapeText(item.item)}
+                </div>
 
-              ${
-                Number(item.completed) === 1
-                  ? `
-                    <div style="font-size:11px;color:var(--muted);margin-top:4px;">
-                      Checked by
-                      <strong>${escapeText(item.checkedBy || 'Unknown')}</strong>
-                      on
-                      ${escapeText(item.checkedAt ? fmtDateTime(item.checkedAt) : 'Unknown date')}
-                    </div>
-                  `
-                  : `
-                    <div style="font-size:11px;color:var(--muted);margin-top:4px;">
-                      Not yet checked
-                    </div>
-                  `
-              }
+                ${
+                  Number(item.completed) === 1
+                    ? `
+                      <div style="
+                        font-size:11px;
+                        color:var(--muted);
+                        margin-top:4px;
+                      ">
+                        Checked by
+                        <strong>${escapeText(item.checkedBy || 'Unknown')}</strong>
+                        on
+                        ${escapeText(
+                          item.checkedAt
+                            ? fmtDateTime(item.checkedAt)
+                            : 'Unknown date'
+                        )}
+                      </div>
+                    `
+                    : `
+                      <div style="
+                        font-size:11px;
+                        color:var(--muted);
+                        margin-top:4px;
+                      ">
+                        Not yet checked
+                      </div>
+                    `
+                }
 
-            </div>
-          </label>
+              </div>
+
+            </label>
+
+            ${canAdd ? `
+              <button
+                type="button"
+                class="btn btn-sm"
+                onclick="startEditCompliance(${Number(item.id)})"
+                style="
+                  flex-shrink:0;
+                "
+              >
+                Edit
+              </button>
+            ` : ''}
+
+          </div>
+
         `).join('')}
+
       </div>
     `
-    : `<div class="empty">No compliance checklist items found.</div>`;
+    : `
+      <div class="empty">
+        No compliance checklist items found.
+      </div>
+    `;
 
-  const listing = card('Compliance Checklist', checklistContent + `
-    <p style="font-size:12px;color:var(--muted);margin-top:10px;">
-      Checklist changes are recorded with the authorized user's name
-      and the date and time of the change.
-    </p>
-  `);
+  // Checklist card
+  const listing = card(
+    'Compliance Checklist',
+    checklistContent + `
+      <p style="
+        font-size:12px;
+        color:var(--muted);
+        margin-top:10px;
+      ">
+        Checklist changes are recorded with the authorized user's name
+        and the date and time of the change.
+      </p>
+    `
+  );
 
-  return addForm + listing;
+  // Always show checklist first and Add/Edit form below
+  return listing + addForm;
 }
+
 
 
 function retentionDisposal(){
@@ -3997,15 +4419,47 @@ async function handleAddBooking(e){
   const b = {id:nextId('BK'), facility:document.getElementById('bk_facility').value, purpose:document.getElementById('bk_purpose').value,
     requestedBy:document.getElementById('bk_by').value, date:document.getElementById('bk_date').value,
     start:document.getElementById('bk_start').value, end:document.getElementById('bk_end').value, status:'Pending'};
-  await dbInsert('bookings', b);
-  logActivity(`New booking request ${b.id} submitted for ${b.facility}.`);
-  render();
+  
+const saved = await dbInsert('bookings', b);
+
+if(!saved) return;
+
+logActivity(`New booking request ${b.id} submitted for ${b.facility}.`);
+
+showTourSphereToast('Booking request submitted successfully!');
+
+render();
+
 }
-async function setBookingStatus(id,status){
-  await dbUpdate('bookings','id',id,{status});
+
+async function setBookingStatus(id, status){
+
+  const saved = await dbUpdate(
+    'bookings',
+    'id',
+    id,
+    { status }
+  );
+
+  if(!saved) return;
+
   logActivity(`Booking ${id} marked ${status}.`);
+
+  const messages = {
+    'Approved': 'Booking approved successfully!',
+    'Rejected': 'Booking rejected successfully!',
+    'Checked-in': 'Booking checked in successfully!',
+    'Completed': 'Booking completed successfully!',
+    'Pending': 'Booking marked as pending!'
+  };
+
+  showTourSphereToast(
+    messages[status] || `Booking status updated to ${status}!`
+  );
+
   render();
 }
+
 function refreshFacilityQR(id){
   const b = DB.bookings.find(x=>x.id===id);
   document.getElementById('facilityTagWrap').innerHTML = facilityTagFor(b);
@@ -4034,9 +4488,20 @@ async function handleAddVisitor(e){
     alert(`⚠ WATCHLIST MATCH\n\n"${v.name}" matches an entry on the Blacklist/Watchlist:\n\nReason: ${flagged.reason}\nFlagged on: ${fmt(flagged.date)}\n\nRegistration will still proceed — please verify this visitor's ID before allowing entry.`);
   }
 
-  await dbInsert('visitors', v);
-  logActivity(`Visitor ${v.name} registered (${v.id}).` + (flagged ? ' ⚠ Name matches Blacklist/Watchlist — verify ID.' : ''));
-  render();
+  
+const saved = await dbInsert('visitors', v);
+
+if(!saved) return;
+
+logActivity(
+  `Visitor ${v.name} registered (${v.id}).` +
+  (flagged ? ' ⚠ Name matches Blacklist/Watchlist — verify ID.' : '')
+);
+
+showTourSphereToast('Visitor registered successfully!');
+
+render();
+
 }
 async function setVisitorStatus(id,status){
   const v = DB.visitors.find(x=>x.id===id);
@@ -4056,15 +4521,49 @@ async function setVisitorStatus(id,status){
   const saved = await dbUpdate('visitors','id',id,changes);
   if(!saved) return;
 
-  logActivity(`Visitor ${v.name} — ${status}.`);
-  render();
+  
+logActivity(`Visitor ${v.name} — ${status}.`);
+
+const messages = {
+  'Checked-in': 'Visitor checked in successfully!',
+  'Checked-out': 'Visitor checked out successfully!'
+};
+
+showTourSphereToast(
+  messages[status] || `Visitor status updated to ${status}!`
+);
+
+render();
+
 }
+
 async function notifyHost(id){
-  const v = DB.visitors.find(x=>x.id===id);
-  await dbUpdate('visitors','id',id,{notified:true});
-  logActivity(`Host ${v.host} notified of visitor ${v.name}.`);
+
+  const visitor = DB.visitors.find(v => v.id === id);
+
+  if(!visitor){
+    showTourSphereToast('Visitor record not found.');
+    return;
+  }
+
+  const saved = await dbUpdate(
+    'visitors',
+    'id',
+    id,
+    { notified: true }
+  );
+
+  if(!saved) return;
+
+  logActivity(
+    `Host ${visitor.host} marked as notified about visitor ${visitor.name}.`
+  );
+
+  showTourSphereToast('Host notification status updated successfully!');
+
   render();
 }
+
 function refreshVisitorQR(id){
   const v = DB.visitors.find(x=>x.id===id);
   document.getElementById('visitorTagWrap').innerHTML = visitorTagFor(v);
@@ -4075,16 +4574,48 @@ function filterVisitorHistory(q){
   const rows = DB.visitors.filter(v=>v.name.toLowerCase().includes(q.toLowerCase())||v.company.toLowerCase().includes(q.toLowerCase()));
   document.getElementById('visitorHistoryTable').innerHTML = table(['ID','Name','Company','Date','Status'], rows.map(v=>[`<span class="id">${v.id}</span>`,v.name,v.company,fmt(v.date),stamp(v.status)]));
 }
+
 async function handleAddBlacklist(e){
   e.preventDefault();
-  await dbInsert('blacklist', {name:document.getElementById('bl_name').value, reason:document.getElementById('bl_reason').value, date:todayStr()});
-  render();
+
+  const saved = await dbInsert('blacklist', {
+    name: document.getElementById('bl_name').value.trim(),
+    reason: document.getElementById('bl_reason').value.trim(),
+    date: todayStr()
+  });
+
+ if(!saved) return;
+
+await loadAllData();
+
+render();
+
+showTourSphereToast('Watchlist entry added successfully!');
 }
+
+
 async function removeBlacklist(i){
   const row = DB.blacklist[i];
-  if(row.id!=null) await dbDelete('blacklist','id',row.id);
+
+  if(!row){
+    alert('Watchlist entry not found.');
+    return;
+  }
+
+  if(row.id == null){
+    alert('This watchlist entry cannot be removed.');
+    return;
+  }
+
+  const deleted = await dbDelete('blacklist', 'id', row.id);
+
+  if(!deleted) return;
+
+  showTourSphereToast('Watchlist entry removed successfully!');
+
   render();
 }
+
 
 async function handleAddDocument(e){
   e.preventDefault();
@@ -4222,9 +4753,7 @@ async function handleAddDocument(e){
       `Document ${result.id} filed — ${result.title}.`
     );
 
-    alert(
-      'Document uploaded and saved successfully.'
-    );
+    showTourSphereToast('Document uploaded and saved successfully!');
 
     render();
 
@@ -4278,7 +4807,7 @@ async function handleAddDocumentVersion(e) {
       throw new Error(result.error || 'Version upload failed.');
     }
 
-    alert('Document version uploaded and saved successfully.');
+    showTourSphereToast('Document version uploaded and saved successfully!');
 
     e.target.reset();
 
@@ -4498,7 +5027,7 @@ async function updateRetentionYears(i,val){
       DB.retentionSchedule[idx] = result;
     }
 
-    alert('Retention period updated successfully.');
+    showTourSphereToast('Retention period updated successfully!');
 
     render();
 
@@ -4581,11 +5110,23 @@ async function updateComplianceChecklist(id, completed){
       DB.complianceChecklist[index] = result;
     }
 
-    /*
-     * Refresh the checklist so the
-     * saved user and timestamp appear.
-     */
-    render();
+    
+/*
+ * Show a notification after successfully
+ * saving the checklist status to MySQL.
+ */
+showTourSphereToast(
+  completed
+    ? 'Compliance checklist item marked as completed!'
+    : 'Compliance checklist item marked as incomplete!'
+);
+
+/*
+ * Refresh the checklist so the
+ * saved user and timestamp appear.
+ */
+render();
+
 
   }catch(error){
 
@@ -4607,16 +5148,44 @@ async function updateComplianceChecklist(id, completed){
 }
 
 async function approveDisposal(id){
-  await dbUpdate('documents','id',id,{status:'Disposed'});
+  const saved = await dbUpdate('documents', 'id', id, {
+    status: 'Disposed'
+  });
+
+  if (!saved) return;
+
   logActivity(`Document ${id} approved for disposal.`);
+
   render();
+
+  showTourSphereToast('Document approved for disposal successfully!');
 }
+
 async function toggleLegalHold(id){
-  const c = DB.contracts.find(x=>x.id===id);
+  const c = DB.contracts.find(x => x.id === id);
+
+  if (!c) {
+    alert('Contract not found.');
+    return;
+  }
+
   const next = !c.legalHold;
-  await dbUpdate('contracts','id',id,{legalHold: next});
-  logActivity(`Legal hold ${next?'placed on':'released from'} contract ${id}.`);
+
+  const saved = await dbUpdate('contracts', 'id', id, {
+    legalHold: next
+  });
+
+  if (!saved) return;
+
+  logActivity(`Legal hold ${next ? 'placed on' : 'released from'} contract ${id}.`);
+
   render();
+
+  showTourSphereToast(
+    next
+      ? 'Legal hold placed successfully!'
+      : 'Legal hold released successfully!'
+  );
 }
 
 
@@ -4691,51 +5260,34 @@ async function handleAddCase(e){
     }
   }
 
-  logActivity(`Legal case ${saved.id} opened — ${saved.title}.`);
+logActivity(`Legal case ${saved.id} opened — ${saved.title}.`);
+await loadAllData();
 
-  render();
+render();
 
-  alert('Legal case created successfully.');
+viewLegalCase(saved.id);
+
+showTourSphereToast('Legal case created successfully!');
 }
 
 
 async function handleAddCorrespondence(e){
-
   e.preventDefault();
 
   const entry = {
-
     id: Math.max(
-  0,
-  ...DB.correspondence.map(
-    c => Number(c.id) || 0
-  )
-) + 1,
+      0,
+      ...DB.correspondence.map(c => Number(c.id) || 0)
+    ) + 1,
 
-    date:
-      document.getElementById('co_date').value,
-
-    caseId:
-      document.getElementById('co_case').value,
-
-    contractId:
-      document.getElementById('co_contract').value,
-
-    withParty:
-      document.getElementById('co_with').value.trim(),
-
-    direction:
-      document.getElementById('co_direction').value,
-
-    type:
-      document.getElementById('co_type').value,
-
-    subject:
-      document.getElementById('co_subject').value.trim(),
-
-    message:
-      document.getElementById('co_message').value.trim()
-
+    date: document.getElementById('co_date').value,
+    caseId: document.getElementById('co_case').value,
+    contractId: document.getElementById('co_contract').value,
+    withParty: document.getElementById('co_with').value.trim(),
+    direction: document.getElementById('co_direction').value,
+    type: document.getElementById('co_type').value,
+    subject: document.getElementById('co_subject').value.trim(),
+    message: document.getElementById('co_message').value.trim()
   };
 
   if(!entry.date){
@@ -4753,59 +5305,47 @@ async function handleAddCorrespondence(e){
     return;
   }
 
-  await dbInsert(
-    'correspondence',
-    entry
-  );
+  const saved = await dbInsert('correspondence', entry);
 
-  const fileInput =
-    document.getElementById('co_attachment');
+  if(!saved) return;
 
-  const file =
-    fileInput && fileInput.files.length
-      ? fileInput.files[0]
-      : null;
+  const fileInput = document.getElementById('co_attachment');
+
+  const file = fileInput && fileInput.files.length
+    ? fileInput.files[0]
+    : null;
+
+  let attachmentFailed = false;
 
   if(file){
+    const formData = new FormData();
 
-    const formData =
-      new FormData();
-
-    formData.append(
-      'correspondenceId',
-      entry.id
-    );
-
-    formData.append(
-      'file',
-      file
-    );
+    formData.append('correspondenceId', saved.id);
+    formData.append('file', file);
 
     try{
+      const response = await fetch(
+        'api/upload_correspondence.php',
+        {
+          method: 'POST',
+          body: formData,
+          credentials: 'same-origin'
+        }
+      );
 
-      const response =
-        await fetch(
-          'api/upload_correspondence.php',
-          {
-            method: 'POST',
-            body: formData,
-            credentials: 'same-origin'
-          }
-        );
+      const result = await response.json();
 
-      const result =
-        await response.json();
-
-      if(!result.ok){
+      if(!response.ok || !result.ok){
+        attachmentFailed = true;
 
         alert(
           'Correspondence was saved, but the attachment could not be uploaded.\n\n' +
-          result.error
+          (result.error || 'Upload failed.')
         );
-
       }
 
     }catch(error){
+      attachmentFailed = true;
 
       console.error(
         'Correspondence attachment upload error:',
@@ -4815,21 +5355,27 @@ async function handleAddCorrespondence(e){
       alert(
         'Correspondence was saved, but the attachment upload failed.'
       );
-
     }
-
   }
 
   logActivity(
-    `Correspondence ${entry.id} logged — ${entry.subject}.`
+    `Correspondence ${saved.id} logged — ${saved.subject}.`
   );
 
   await loadAllData();
 
   render();
 
+  if(attachmentFailed){
+    showTourSphereToast(
+      'Correspondence saved, but the attachment was not uploaded.'
+    );
+  }else{
+    showTourSphereToast(
+      'Correspondence logged successfully!'
+    );
+  }
 }
-
 
 async function handleAddContract(e){
   e.preventDefault();
@@ -4902,7 +5448,7 @@ async function handleAddContract(e){
 
     render();
 
-    alert('Contract created successfully.');
+    showTourSphereToast('Contract created successfully!');
 
   } catch (error) {
     console.error('Contract creation error:', error);
@@ -4963,7 +5509,7 @@ async function markSigned(id){
   logActivity(`Contract ${id} marked as signed by ${signerName.trim()}.`);
   render();
 
-  alert('Contract signature recorded successfully.');
+  showTourSphereToast('Contract signature recorded successfully!');
 }
 
 function refreshContractQR(id){
@@ -5117,8 +5663,6 @@ TourSphere`;
   window.location.href = mailto;
 }
 
-
-
 async function renewContract(id){
   const c = DB.contracts.find(x => x.id === id);
 
@@ -5197,7 +5741,7 @@ async function renewContract(id){
 
   render();
 
-  alert('Contract renewed successfully.');
+  showTourSphereToast('Contract renewed successfully!');
 }
 
 
@@ -5234,10 +5778,10 @@ async function advanceApproval(id){
   render();
 
   if (nextLevel === 2) {
-    alert('Both approval levels are complete. The contract is now awaiting signature and activation.');
-  } else {
-    alert(`Contract approved at level ${nextLevel} of 2.`);
-  }
+  showTourSphereToast('Both approval levels are complete. The contract is now awaiting signature and activation.');
+} else {
+  showTourSphereToast(`Contract approved at level ${nextLevel} of 2.`);
+}
 }
 
 
@@ -5285,10 +5829,8 @@ async function activateContract(id){
   logActivity(`Contract ${id} activated after completing approval and signature requirements.`);
   render();
 
-  alert('Contract activated successfully.');
+  showTourSphereToast('Contract activated successfully!');
 }
-
-
 
 async function terminateContract(id){
   const c = DB.contracts.find(x => x.id === id);
@@ -5344,7 +5886,7 @@ async function terminateContract(id){
 
   render();
 
-  alert('Contract terminated successfully.');
+  showTourSphereToast('Contract terminated successfully!');
 }
 
 
