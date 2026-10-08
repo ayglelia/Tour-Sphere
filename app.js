@@ -963,12 +963,91 @@ function renderDashboard(){
 /* ============================================================
    FACILITIES RESERVATION
    ============================================================ */
-function facilitiesListing(){
-  return card('Registered Facilities & Resources', table(
-    ['ID','Name','Type','Capacity'],
-    DB.facilities.map(f=>[`<span class="id">${f.id}</span>`, f.name, f.type, f.capacity])
-  ));
+
+async function handleAddFacility(event){
+  event.preventDefault();
+
+  if(!LIVE || !SESSION){
+    alert('Please sign in and connect to the database.');
+    return;
+  }
+
+  if(!['Admin', 'Facilities & Compliance Officer'].includes(SESSION.role)){
+    alert('You do not have permission to add facilities.');
+    return;
+  }
+
+  const name = document.getElementById('facility_name').value.trim();
+  const type = document.getElementById('facility_type').value.trim();
+  const capacity = Number(document.getElementById('facility_capacity').value);
+
+  if(!name || !type || !Number.isInteger(capacity) || capacity < 1){
+    alert('Please enter a facility name, type, and valid capacity.');
+    return;
+  }
+
+  const facility = {
+    id: nextId('FA'),
+    name,
+    type,
+    capacity
+  };
+
+  const saved = await dbInsert('facilities', facility);
+
+  if(saved){
+    alert('Facility added successfully!');
+    render();
+  }
 }
+
+
+function facilitiesListing(){
+  const canAdd = SESSION && [
+    'Admin',
+    'Facilities & Compliance Officer'
+  ].includes(SESSION.role);
+
+  const addForm = canAdd ? card('Add New Facility', `
+    <form onsubmit="handleAddFacility(event)">
+      <div class="field">
+        <label for="facility_name">Facility Name</label>
+        <input id="facility_name" required
+               placeholder="Example: Conference Room A">
+      </div>
+
+      <div class="field">
+        <label for="facility_type">Facility Type</label>
+        <input id="facility_type" required
+               placeholder="Example: Meeting Room">
+      </div>
+
+      <div class="field">
+        <label for="facility_capacity">Capacity</label>
+        <input type="number" id="facility_capacity"
+               min="1" step="1" required
+               placeholder="Example: 20">
+      </div>
+
+      <button class="btn" type="submit">
+        Add Facility
+      </button>
+    </form>
+  `) : '';
+
+  const listing = card('Registered Facilities & Resources', table(
+    ['ID','Name','Type','Capacity'],
+    DB.facilities.map(f=>[
+      `<span class="id">${f.id}</span>`,
+      f.name,
+      f.type,
+      f.capacity
+    ])
+  ));
+
+  return addForm + listing;
+}
+
 function facilitiesBooking(){
   const opts = DB.facilities.map(f=>`<option>${f.name}</option>`).join('');
   return `
@@ -1947,12 +2026,128 @@ function documentsArchival(){
 /* ============================================================
    RECORDS RETENTION & COMPLIANCE
    ============================================================ */
-function retentionSchedule(){
-  return card('Retention Schedule Configuration', table(
-    ['Record Type','Retention Period'],
-    DB.retentionSchedule.map((s,i)=>[s.type, `<input type="number" value="${s.years}" style="width:70px;display:inline-block;" onchange="updateRetentionYears(${i}, this.value)"> years`])
-  ) + `<p style="font-size:12px;color:var(--muted);margin-top:10px;">Editing a period recalculates disposal alerts and archival schedules across the Document Management subsystem automatically.</p>`);
+
+async function handleAddRetentionSchedule(event){
+  event.preventDefault();
+
+  if(!LIVE || !SESSION || SESSION.role !== 'Admin'){
+    alert('Only an Admin can add retention schedules.');
+    return;
+  }
+
+  const type = document.getElementById('retention_type').value.trim();
+  const years = Number(document.getElementById('retention_years').value);
+
+  if(!type || !Number.isInteger(years) || years < 1){
+    alert('Enter a record type and a valid retention period.');
+    return;
+  }
+
+  if(DB.retentionSchedule.some(
+    r => r.type.toLowerCase() === type.toLowerCase()
+  )){
+    alert('This record type already exists.');
+    return;
+  }
+
+  
+  const adminPassword = prompt(
+    'Enter your Admin password to add this retention schedule:'
+  );
+
+  if(adminPassword === null) return;
+
+  if(!adminPassword){
+    alert('Admin password is required.');
+    return;
+  }
+
+  try {
+    const response = await fetch('api/add_retention.php', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        type,
+        years,
+        adminPassword
+      })
+    });
+
+    const result = await response.json();
+
+    if(!response.ok){
+      throw new Error(result.error || 'Failed to add retention schedule.');
+    }
+
+    DB.retentionSchedule.push({
+      type: result.type,
+      years: result.years
+    });
+
+    alert('Retention schedule added successfully!');
+    render();
+
+  } catch(error) {
+    alert('Unable to add retention schedule: ' + error.message);
+  }
+
 }
+
+function retentionSchedule(){
+
+  const canAdd = SESSION && SESSION.role === 'Admin';
+
+  const addForm = canAdd ? card('Add Retention Schedule', `
+    <form onsubmit="handleAddRetentionSchedule(event)">
+
+      <div class="field">
+        <label for="retention_type">Record Type</label>
+        <input id="retention_type"
+               required
+               placeholder="Example: Visitor Records">
+      </div>
+
+      <div class="field">
+        <label for="retention_years">Retention Period (Years)</label>
+        <input type="number"
+               id="retention_years"
+               min="1"
+               step="1"
+               required
+               placeholder="Example: 5">
+      </div>
+
+      <button class="btn" type="submit">
+        Add Retention Schedule
+      </button>
+
+    </form>
+  `) : '';
+
+  const listing = card('Retention Schedule Configuration', table(
+    ['Record Type', 'Retention Period'],
+    DB.retentionSchedule.map((s, i) => [
+      s.type,
+      `<input type="number"
+              min="1"
+              step="1"
+              value="${s.years}"
+              style="width:70px;display:inline-block;"
+              onchange="updateRetentionYears(${i}, this.value)"> years`
+    ])
+  ) + `
+    <p style="font-size:12px;color:var(--muted);margin-top:10px;">
+      Editing a period updates retention rules used by the
+      Document Management subsystem.
+    </p>
+  `);
+
+  return addForm + listing;
+}
+
 function retentionAlerts(){
 
   const alerts = computeAlerts().filter(
@@ -2011,102 +2206,155 @@ function retentionAlerts(){
   );
 }
 
+
+async function handleAddComplianceItem(event){
+  event.preventDefault();
+
+  if(!LIVE || !SESSION){
+    alert('Please sign in first.');
+    return;
+  }
+
+  const allowedRoles = [
+    'Admin',
+    'Facilities & Compliance Officer',
+    'Records & Audit Officer'
+  ];
+
+  if(!allowedRoles.includes(SESSION.role)){
+    alert('You do not have permission to add checklist items.');
+    return;
+  }
+
+  const input = document.getElementById('compliance_item');
+  const item = input.value.trim();
+
+  if(!item){
+    alert('Please enter a checklist item.');
+    return;
+  }
+
+  if(DB.complianceChecklist.some(
+    row => row.item.toLowerCase() === item.toLowerCase()
+  )){
+    alert('This checklist item already exists.');
+    return;
+  }
+
+  const saved = await dbInsert('complianceChecklist', {
+    item,
+    completed: false
+  });
+
+  if(saved){
+    alert('Compliance checklist item added successfully!');
+    render();
+  }
+}
+
+
 function retentionCompliance(){
 
   const items = DB.complianceChecklist || [];
 
-  if(!items.length){
-    return card(
-      'Compliance Checklist',
-      `<div class="empty">
-        No compliance checklist items found.
-      </div>`
-    );
-  }
+  const allowedRoles = [
+    'Admin',
+    'Facilities & Compliance Officer',
+    'Records & Audit Officer'
+  ];
 
-  return card(
-    'Compliance Checklist',
+  const canAdd = SESSION && allowedRoles.includes(SESSION.role);
 
-    `<div>
-      ${items.map(item => `
+  // Safely display text entered by users.
+  const escapeText = value => String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 
-        <label
-          style="
-            display:flex;
-            align-items:flex-start;
-            gap:10px;
-            padding:10px 0;
-            border-bottom:1px solid var(--line-soft);
-            font-size:13px;
-            cursor:pointer;
-          "
+  const addForm = canAdd ? card('Add Compliance Checklist Item', `
+    <form onsubmit="handleAddComplianceItem(event)">
+
+      <div class="field">
+        <label for="compliance_item">Checklist Item</label>
+
+        <input
+          id="compliance_item"
+          required
+          maxlength="255"
+          placeholder="Example: Review safety inspection requirements"
         >
+      </div>
 
-          <input
-            type="checkbox"
-            ${Number(item.completed) === 1 ? 'checked' : ''}
-            onchange="updateComplianceChecklist(${item.id}, this.checked)"
-            style="margin-top:3px;"
+      <button class="btn" type="submit">
+        Add Checklist Item
+      </button>
+
+    </form>
+  `) : '';
+
+  const checklistContent = items.length
+    ? `
+      <div>
+        ${items.map(item => `
+          <label
+            style="
+              display:flex;
+              align-items:flex-start;
+              gap:10px;
+              padding:10px 0;
+              border-bottom:1px solid var(--line-soft);
+              font-size:13px;
+              cursor:pointer;
+            "
           >
 
-          <div style="flex:1;">
+            <input
+              type="checkbox"
+              ${Number(item.completed) === 1 ? 'checked' : ''}
+              onchange="updateComplianceChecklist(${Number(item.id)}, this.checked)"
+              style="margin-top:3px;"
+            >
 
-            <div>
-              ${item.item}
+            <div style="flex:1;">
+
+              <div>${escapeText(item.item)}</div>
+
+              ${
+                Number(item.completed) === 1
+                  ? `
+                    <div style="font-size:11px;color:var(--muted);margin-top:4px;">
+                      Checked by
+                      <strong>${escapeText(item.checkedBy || 'Unknown')}</strong>
+                      on
+                      ${escapeText(item.checkedAt ? fmtDateTime(item.checkedAt) : 'Unknown date')}
+                    </div>
+                  `
+                  : `
+                    <div style="font-size:11px;color:var(--muted);margin-top:4px;">
+                      Not yet checked
+                    </div>
+                  `
+              }
+
             </div>
-
-            ${
-              Number(item.completed) === 1
-                ? `
-                  <div
-                    style="
-                      font-size:11px;
-                      color:var(--muted);
-                      margin-top:4px;
-                    "
-                  >
-                    Checked by
-                    <strong>${item.checkedBy || 'Unknown'}</strong>
-                    on
-                    ${fmtDateTime(item.checkedAt)}
-                  </div>
-                `
-                : `
-                  <div
-                    style="
-                      font-size:11px;
-                      color:var(--muted);
-                      margin-top:4px;
-                    "
-                  >
-                    Not yet checked
-                  </div>
-                `
-            }
-
-          </div>
-
-        </label>
-
-      `).join('')}
-    </div>`
-
-    + `
-
-      <p
-        style="
-          font-size:12px;
-          color:var(--muted);
-          margin-top:10px;
-        "
-      >
-        Checklist changes are recorded with the authorized user's name
-        and the date and time of the change.
-      </p>
-
+          </label>
+        `).join('')}
+      </div>
     `
-  );
+    : `<div class="empty">No compliance checklist items found.</div>`;
+
+  const listing = card('Compliance Checklist', checklistContent + `
+    <p style="font-size:12px;color:var(--muted);margin-top:10px;">
+      Checklist changes are recorded with the authorized user's name
+      and the date and time of the change.
+    </p>
+  `);
+
+  return addForm + listing;
 }
+
 
 function retentionDisposal(){
 
@@ -3693,11 +3941,26 @@ function render(){
 if(SESSION){
   const initials = SESSION.fullName.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
 
-  document.getElementById('userChip').innerHTML = `
-    <div class="av">${initials}</div> ${SESSION.fullName} — ${SESSION.role}
-    <button class="btn-ghost btn-sm" style="margin-left:10px;" onclick="openChangePassword()">Change Password</button>
-    <button class="btn-ghost btn-sm" style="margin-left:10px;" onclick="handleLogout()">Sign out</button>
-  `;
+  
+document.getElementById('userChip').innerHTML = `
+  <button type="button"
+          class="btn-ghost btn-sm"
+          onclick="openMyProfile()"
+          aria-label="Open my profile"
+          style="display:inline-flex;align-items:center;gap:10px;">
+
+    <div class="av" id="profileHeaderAvatar"></div>
+
+    <span id="profileHeaderName"></span>
+
+    <span aria-hidden="true">▾</span>
+
+  </button>
+`;
+
+document.getElementById('profileHeaderAvatar').textContent = initials;
+document.getElementById('profileHeaderName').textContent = SESSION.fullName;
+
 }
 
 
@@ -5157,6 +5420,225 @@ function togglePasswordVisibility(inputId, button) {
   );
   button.setAttribute('aria-pressed', String(showPassword));
 }
+
+
+function openMyProfile(){
+  if(!SESSION) return;
+
+  if(document.getElementById('myProfileModal')) return;
+
+  const modal = document.createElement('div');
+  modal.id = 'myProfileModal';
+
+  modal.style.cssText = `
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,0.5);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    z-index:9998;
+    padding:20px;
+    box-sizing:border-box;
+  `;
+
+  modal.innerHTML = `
+    <div role="dialog"
+         aria-modal="true"
+         aria-labelledby="myProfileTitle"
+         style="
+           background:white;
+           color:#1f2937;
+           padding:28px;
+           border-radius:14px;
+           width:100%;
+           max-width:440px;
+           max-height:90vh;
+           overflow-y:auto;
+           box-sizing:border-box;
+         ">
+
+      <div style="
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        gap:12px;
+      ">
+        <h2 id="myProfileTitle" style="margin:0;">
+          My Profile
+        </h2>
+
+        <button type="button"
+                class="btn btn-ghost"
+                id="closeMyProfile">
+          ✕ Close
+        </button>
+      </div>
+
+      <div style="text-align:center;margin:28px 0 24px;">
+
+        <div id="myProfileAvatar"
+             style="
+               width:72px;
+               height:72px;
+               border-radius:50%;
+               background:#2f80ed;
+               color:white;
+               display:flex;
+               align-items:center;
+               justify-content:center;
+               font-size:25px;
+               font-weight:bold;
+               margin:0 auto 14px;
+             ">
+        </div>
+
+        <h3 id="myProfileName"
+            style="margin:0;font-size:20px;">
+        </h3>
+
+        <p id="myProfileRole"
+           style="
+             color:#6b7280;
+             font-size:13px;
+             margin:6px 0 0;
+           ">
+        </p>
+      </div>
+
+      <div style="
+        display:flex;
+        flex-direction:column;
+        gap:16px;
+        width:100%;
+      ">
+
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <label for="myProfileFullName"
+                 style="font-size:13px;font-weight:600;">
+            Full Name
+          </label>
+
+          <input id="myProfileFullName"
+                 type="text"
+                 readonly
+                 style="
+                   display:block;
+                   width:100%;
+                   min-width:0;
+                   box-sizing:border-box;
+                   padding:12px;
+                   border:1px solid #d1d5db;
+                   border-radius:8px;
+                   background:#f9fafb;
+                   color:#1f2937;
+                 ">
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <label for="myProfileEmail"
+                 style="font-size:13px;font-weight:600;">
+            Email Address
+          </label>
+
+          <input id="myProfileEmail"
+                 type="email"
+                 readonly
+                 style="
+                   display:block;
+                   width:100%;
+                   min-width:0;
+                   box-sizing:border-box;
+                   padding:12px;
+                   border:1px solid #d1d5db;
+                   border-radius:8px;
+                   background:#f9fafb;
+                   color:#1f2937;
+                 ">
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <label for="myProfileAccountRole"
+                 style="font-size:13px;font-weight:600;">
+            Account Role
+          </label>
+
+          <input id="myProfileAccountRole"
+                 type="text"
+                 readonly
+                 style="
+                   display:block;
+                   width:100%;
+                   min-width:0;
+                   box-sizing:border-box;
+                   padding:12px;
+                   border:1px solid #d1d5db;
+                   border-radius:8px;
+                   background:#f9fafb;
+                   color:#1f2937;
+                 ">
+        </div>
+
+      </div>
+
+      <div style="
+        display:flex;
+        gap:10px;
+        margin-top:24px;
+        align-items:center;
+      ">
+        <button type="button"
+                class="btn"
+                id="myProfileChangePassword"
+                style="flex:1;">
+          Change Password
+        </button>
+
+        <button type="button"
+                class="btn btn-ghost"
+                id="myProfileSignOut">
+          Sign out
+        </button>
+      </div>
+
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  const initials = SESSION.fullName
+    .split(' ')
+    .filter(Boolean)
+    .map(word => word[0])
+    .slice(0,2)
+    .join('')
+    .toUpperCase();
+
+  document.getElementById('myProfileAvatar').textContent = initials;
+  document.getElementById('myProfileName').textContent = SESSION.fullName;
+  document.getElementById('myProfileRole').textContent = SESSION.role;
+
+  document.getElementById('myProfileFullName').value = SESSION.fullName;
+  document.getElementById('myProfileEmail').value = SESSION.email || '';
+  document.getElementById('myProfileAccountRole').value = SESSION.role;
+
+  document.getElementById('closeMyProfile').onclick = () => {
+    modal.remove();
+  };
+
+  document.getElementById('myProfileChangePassword').onclick = () => {
+    modal.remove();
+    openChangePassword();
+  };
+
+  document.getElementById('myProfileSignOut').onclick = () => {
+    modal.remove();
+    handleLogout();
+  };
+
+  document.getElementById('closeMyProfile').focus();
+}
+
 
 function openChangePassword(){
   if (!SESSION) return;
