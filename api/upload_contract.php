@@ -72,7 +72,7 @@ if (!in_array($extension, $allowedExtensions, true)) {
 
 $uploadDir = getenv('CONTRACT_STORAGE_DIR');
 
-if (!$uploadDir || !str_starts_with($uploadDir, '/')) {
+if (!is_absolute_storage_path($uploadDir)) {
     uploadError('Private contract storage is not configured.', 500);
 }
 

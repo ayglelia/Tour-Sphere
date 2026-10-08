@@ -51,7 +51,7 @@ if (empty($file['file_path'])) {
 
 $storageDir = getenv('CORRESPONDENCE_STORAGE_DIR');
 
-if (!$storageDir || !str_starts_with($storageDir, '/')) {
+if (!is_absolute_storage_path($storageDir)) {
     http_response_code(500);
     exit('Private correspondence storage is not configured.');
 }

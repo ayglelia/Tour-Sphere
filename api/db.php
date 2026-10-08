@@ -96,3 +96,17 @@ function require_role(array $user, array $allowed): void {
         respond(['error' => 'Your role (' . $user['role'] . ') is not permitted to do this.'], 403);
     }
 }
+
+function is_absolute_storage_path($path): bool {
+    if (!is_string($path) || $path === '') {
+        return false;
+    }
+
+    return str_starts_with($path, '/') ||
+        (
+            strlen($path) >= 3 &&
+            ctype_alpha($path[0]) &&
+            $path[1] === ':' &&
+            ($path[2] === '\\' || $path[2] === '/')
+        );
+}

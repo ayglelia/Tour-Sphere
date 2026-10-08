@@ -82,8 +82,11 @@ if ($contractId !== '') {
 /*
  * Validate the supplied filing date.
  */
+
+date_default_timezone_set('Asia/Manila');
+
 $dateObject = DateTime::createFromFormat(
-    'Y-m-d',
+    '!Y-m-d',
     $dateAdded
 );
 
@@ -216,7 +219,7 @@ $storedName = 'DOC_' .
 
 $uploadDir = getenv('DOCUMENT_STORAGE_DIR');
 
-if (!$uploadDir || !str_starts_with($uploadDir, '/')) {
+if (!is_absolute_storage_path($uploadDir)) {
     http_response_code(500);
     echo json_encode([
         'error' => 'Private document storage is not configured.'

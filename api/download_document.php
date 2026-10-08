@@ -35,7 +35,7 @@ if (empty($document['file_path'])) {
 
 $storageDir = getenv('DOCUMENT_STORAGE_DIR');
 
-if (!$storageDir || !str_starts_with($storageDir, '/')) {
+if (!is_absolute_storage_path($storageDir)) {
     http_response_code(500);
     exit('Private document storage is not configured.');
 }
