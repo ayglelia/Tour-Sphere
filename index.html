@@ -27,7 +27,26 @@
       <p class="sub" id="loginModeNote">Checking database connection…</p>
       <form id="loginForm" onsubmit="handleLogin(event)">
         <div class="field"><label>Email</label><input type="email" id="login_email" required placeholder="you@toursphere.ph" autocomplete="username"></div>
-        <div class="field"><label>Password</label><input type="password" id="login_password" required placeholder="••••••••" autocomplete="current-password"></div>
+        
+<div class="field">
+  <label for="login_password">Password</label>
+
+  <div style="display:flex;align-items:center;gap:8px;">
+    <input type="password" id="login_password"
+           required placeholder="••••••••"
+           autocomplete="current-password"
+           style="flex:1;min-width:0;">
+
+    <button type="button"
+            class="btn btn-ghost"
+            aria-label="Show password"
+            aria-pressed="false"
+            onclick="togglePasswordVisibility('login_password', this)">
+      👁️
+    </button>
+  </div>
+</div>
+
         <div class="field" id="demoRoleField">
           <label>Role (demo mode only)</label>
           <select id="login_role"></select>

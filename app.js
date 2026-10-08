@@ -184,6 +184,175 @@ async function handleChangeStaffRole(id, name, newRole){
   logActivity(`${name}'s role changed to ${newRole}.`);
   render();
 }
+
+
+function openResetStaffPassword(userId, staffName){
+  if (!SESSION || SESSION.role !== 'Admin') return;
+
+  if (document.getElementById('resetStaffModal')) return;
+
+  const modal = document.createElement('div');
+  modal.id = 'resetStaffModal';
+
+  modal.style.cssText = `
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    padding: 20px;
+  `;
+
+  modal.innerHTML = `
+    <div role="dialog" aria-modal="true" aria-label="Reset Staff Password"
+         style="background:white;padding:28px;border-radius:14px;width:100%;max-width:420px;">
+
+      <h2>Reset Staff Password</h2>
+
+      <p style="margin:15px 0;">
+        You are resetting the password for
+        <strong id="resetStaffName"></strong>.
+      </p>
+
+      <p style="font-size:13px;color:#6b7280;margin-bottom:20px;">
+        This will replace the staff member's current password.
+        Enter your Admin password to confirm.
+      </p>
+
+      <form id="resetStaffForm">
+
+        
+<div class="field">
+  <label for="resetAdminPassword">Your Admin Password</label>
+
+  <div style="display:flex;align-items:center;gap:8px;">
+    <input type="password" id="resetAdminPassword"
+           autocomplete="current-password" required
+           style="flex:1;min-width:0;">
+
+    <button type="button"
+            class="btn btn-ghost"
+            aria-label="Show password"
+            aria-pressed="false"
+            onclick="togglePasswordVisibility('resetAdminPassword', this)">
+      👁️
+    </button>
+  </div>
+</div>
+
+
+        <p id="resetStaffError"
+           role="alert"
+           style="color:#dc2626;font-size:13px;"></p>
+
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;">
+          <button type="button" class="btn btn-ghost"
+                  id="cancelStaffReset">
+            Cancel
+          </button>
+
+          <button type="submit" class="btn" id="confirmStaffReset">
+            Reset Password
+          </button>
+        </div>
+
+      </form>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  document.getElementById('resetStaffName').textContent = staffName;
+
+  document.getElementById('cancelStaffReset').onclick = () => {
+    modal.remove();
+  };
+
+  document.getElementById('resetStaffForm').onsubmit = event => {
+    handleResetStaffPassword(event, userId);
+  };
+
+  document.getElementById('resetAdminPassword').focus();
+}
+
+
+async function handleResetStaffPassword(event, userId){
+  event.preventDefault();
+
+  const modal = document.getElementById('resetStaffModal');
+  const adminPasswordInput = document.getElementById('resetAdminPassword');
+  const errorBox = document.getElementById('resetStaffError');
+  const submitBtn = document.getElementById('confirmStaffReset');
+  const cancelBtn = document.getElementById('cancelStaffReset');
+
+  if (!modal || !adminPasswordInput || !submitBtn) return;
+
+  const adminPassword = adminPasswordInput.value;
+
+  errorBox.textContent = '';
+  submitBtn.disabled = true;
+  cancelBtn.disabled = true;
+  submitBtn.textContent = 'Resetting...';
+
+  try {
+    const response = await fetch('api/users.php?action=reset_password', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        userId,
+        adminPassword
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || 'Password reset failed.');
+    }
+
+    // Clear the Admin password from the form.
+    adminPasswordInput.value = '';
+
+    // Remove the confirmation form.
+    document.getElementById('resetStaffForm').remove();
+
+    // Show the temporary password only in this result dialog.
+    const result = document.createElement('div');
+    result.style.cssText = 'margin-top:20px;';
+
+    const message = document.createElement('p');
+    message.textContent = 'Password reset successful. Give this temporary password privately to the staff member.';
+
+    const passwordDisplay = document.createElement('div');
+    passwordDisplay.style.cssText = 'padding:14px;margin:16px 0;background:#f3f4f6;border-radius:8px;font-family:monospace;word-break:break-all;font-size:16px;';
+    passwordDisplay.textContent = data.temporaryPassword;
+
+    const note = document.createElement('p');
+    note.style.cssText = 'font-size:12px;color:#6b7280;margin-bottom:16px;';
+    note.textContent = 'This password will not be shown again. Ask the staff member to change it after logging in.';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'btn';
+    closeBtn.textContent = 'Close';
+    closeBtn.onclick = () => modal.remove();
+
+    result.append(message, passwordDisplay, note, closeBtn);
+    modal.querySelector('[role="dialog"]').appendChild(result);
+
+  } catch (error) {
+    errorBox.textContent = error.message || 'Something went wrong.';
+    submitBtn.disabled = false;
+    cancelBtn.disabled = false;
+    submitBtn.textContent = 'Reset Password';
+  }
+}
+
 function renderStaffAccounts(){
   if(!LIVE){
     return card('Staff Accounts', `<div class="empty">Staff account management needs the live database connection — this table requires the live database connection.</div>`);
@@ -195,11 +364,35 @@ function renderStaffAccounts(){
       <form onsubmit="handleAddStaff(event)">
         <div class="field"><label>Full name</label><input id="us_name" required></div>
         <div class="field"><label>Email</label><input type="email" id="us_email" required></div>
-        <div class="field"><label>Temporary password</label><input type="password" id="us_password" required minlength="8" placeholder="At least 8 characters"></div>
+        
+<div class="field">
+  <label for="us_password">Temporary Password</label>
+
+  <div style="display:flex;align-items:center;gap:8px;">
+    <input type="password" id="us_password"
+           required minlength="12"
+           placeholder="At least 12 characters"
+           style="flex:1;min-width:0;">
+
+    <button type="button"
+            class="btn btn-ghost"
+            aria-label="Show password"
+            aria-pressed="false"
+            onclick="togglePasswordVisibility('us_password', this)">
+      👁️
+    </button>
+  </div>
+</div>
+
         <div class="field"><label>Role</label><select id="us_role">${roleOpts.map(r=>`<option>${r}</option>`).join('')}</select></div>
         <button class="btn" type="submit">Create account</button>
       </form>
-      <p style="font-size:12px;color:var(--muted);margin-top:10px;">Share this password with them directly — there's no "change my password" screen yet, so treat it as a temporary one for now.</p>
+      
+<p style="font-size:12px;color:var(--muted);margin-top:10px;">
+  Share the temporary password privately with the staff member.
+  They can use Change Password after signing in.
+</p>
+
     `)}
     ${card('Existing Staff <span class="count">('+STAFF.length+')</span>', table(
       ['Name','Email','Role',''],
@@ -209,8 +402,15 @@ function renderStaffAccounts(){
         const roleCell = isSelf
           ? u.role + ' <span style="color:var(--muted);font-size:11px;">(you)</span>'
           : `<select onchange="handleChangeStaffRole(${u.id}, '${safeName}', this.value)" style="width:auto;padding:4px 8px;">${roleOpts.map(r=>`<option ${r===u.role?'selected':''}>${r}</option>`).join('')}</select>`;
-        const deleteCell = isSelf ? '—' : `<button class="btn btn-sm btn-danger" onclick="handleDeleteStaff(${u.id}, '${safeName}')">Delete</button>`;
-        return [u.fullName, u.email, roleCell, deleteCell];
+        
+const deleteCell = isSelf ? '—' : `<button class="btn btn-sm btn-danger" onclick="handleDeleteStaff(${u.id}, '${safeName}')">Delete</button>`;
+
+const resetCell = (!isSelf && u.role !== 'Admin')
+  ? `<button class="btn btn-sm" onclick="openResetStaffPassword(${u.id}, '${safeName}')">Reset Password</button>`
+  : '';
+
+return [u.fullName, u.email, roleCell, `${resetCell} ${deleteCell}`];
+
       })
     )) + `<p style="font-size:12px;color:var(--muted);margin-top:10px;">You can't delete or change the role of your own account, and the system won't let the last remaining Admin be removed or demoted.</p>`}
   </div>`;
@@ -3489,13 +3689,17 @@ function render(){
   document.getElementById('alertCount').textContent = computeAlerts().length;
   renderBellDropdown();
 
-  if(SESSION){
-    const initials = SESSION.fullName.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
-    document.getElementById('userChip').innerHTML = `
-      <div class="av">${initials}</div> ${SESSION.fullName} — ${SESSION.role}
-      <button class="btn-ghost btn-sm" style="margin-left:10px;" onclick="handleLogout()">Sign out</button>
-    `;
-  }
+
+if(SESSION){
+  const initials = SESSION.fullName.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
+
+  document.getElementById('userChip').innerHTML = `
+    <div class="av">${initials}</div> ${SESSION.fullName} — ${SESSION.role}
+    <button class="btn-ghost btn-sm" style="margin-left:10px;" onclick="openChangePassword()">Change Password</button>
+    <button class="btn-ghost btn-sm" style="margin-left:10px;" onclick="handleLogout()">Sign out</button>
+  `;
+}
+
 
   if(APP.sub==='dashboard'){
     crumb.innerHTML = '<b>Dashboard</b>';
@@ -4923,12 +5127,233 @@ if(!LIVE){
     payload = await res.json();
   }catch(err){ errEl.textContent = 'Could not reach the server.'; return; }
   if(!res.ok){ errEl.textContent = payload.error || 'Sign in failed.'; return; }
+  
   SESSION = payload.user;
+
+  if (SESSION.mustChangePassword) {
+    openChangePassword();
+    return;
+  }
+
   await loadAllData();
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('appRoot').style.display = 'grid';
   goTo('dashboard', null);
+
 }
+
+
+function togglePasswordVisibility(inputId, button) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+
+  const showPassword = input.type === 'password';
+
+  input.type = showPassword ? 'text' : 'password';
+  button.textContent = showPassword ? '🙈' : '👁️';
+  button.setAttribute(
+    'aria-label',
+    showPassword ? 'Hide password' : 'Show password'
+  );
+  button.setAttribute('aria-pressed', String(showPassword));
+}
+
+function openChangePassword(){
+  if (!SESSION) return;
+
+  if (document.getElementById('changePasswordModal')) return;
+
+  const modal = document.createElement('div');
+  modal.id = 'changePasswordModal';
+
+  modal.style.cssText = `
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    padding: 20px;
+  `;
+
+  modal.innerHTML = `
+    <div role="dialog" aria-modal="true" aria-label="Change Password"
+         style="background:white;padding:28px;border-radius:14px;width:100%;max-width:420px;">
+
+      <h2 style="margin-bottom:8px;">Change Password</h2>
+
+      <p style="font-size:13px;color:#6b7280;margin-bottom:20px;">
+        Enter your current password and choose a new password.
+      </p>
+
+      <form onsubmit="handleChangePassword(event)">
+
+        
+<div class="field">
+  <label for="currentPassword">Current Password</label>
+
+  <div style="display:flex;align-items:center;gap:8px;">
+    <input type="password" id="currentPassword"
+           autocomplete="current-password" required
+           style="flex:1;min-width:0;">
+
+    <button type="button"
+            class="btn btn-ghost"
+            aria-label="Show password"
+            aria-pressed="false"
+            onclick="togglePasswordVisibility('currentPassword', this)">
+      👁️
+    </button>
+  </div>
+</div>
+
+
+        
+<div class="field">
+  <label for="newPassword">New Password</label>
+
+  <div style="display:flex;align-items:center;gap:8px;">
+    <input type="password" id="newPassword"
+           autocomplete="new-password" minlength="12" required
+           style="flex:1;min-width:0;">
+
+    <button type="button"
+            class="btn btn-ghost"
+            aria-label="Show password"
+            aria-pressed="false"
+            onclick="togglePasswordVisibility('newPassword', this)">
+      👁️
+    </button>
+  </div>
+</div>
+
+
+        
+<div class="field">
+  <label for="confirmPassword">Confirm New Password</label>
+
+  <div style="display:flex;align-items:center;gap:8px;">
+    <input type="password" id="confirmPassword"
+           autocomplete="new-password" minlength="12" required
+           style="flex:1;min-width:0;">
+
+    <button type="button"
+            class="btn btn-ghost"
+            aria-label="Show password"
+            aria-pressed="false"
+            onclick="togglePasswordVisibility('confirmPassword', this)">
+      👁️
+    </button>
+  </div>
+</div>
+
+
+        <p style="font-size:12px;color:#6b7280;">
+          Use at least 12 characters.
+        </p>
+
+        <p id="changePasswordError"
+           role="alert"
+           style="color:#dc2626;font-size:13px;"></p>
+
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;">
+          
+<button type="button" class="btn btn-ghost"
+        onclick="document.getElementById('changePasswordModal').remove(); if(SESSION?.mustChangePassword) handleLogout();">
+  ${SESSION?.mustChangePassword ? 'Sign out' : 'Cancel'}
+</button>
+
+
+          <button type="submit" class="btn" id="savePasswordBtn">
+            Save Password
+          </button>
+        </div>
+
+      </form>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+  document.getElementById('currentPassword').focus();
+}
+
+
+async function handleChangePassword(event){
+  event.preventDefault();
+
+  const currentPassword = document.getElementById('currentPassword').value;
+  const newPassword = document.getElementById('newPassword').value;
+  const confirmPassword = document.getElementById('confirmPassword').value;
+
+  const errorBox = document.getElementById('changePasswordError');
+  const saveBtn = document.getElementById('savePasswordBtn');
+
+  errorBox.textContent = '';
+
+  if(newPassword.length < 12){
+    errorBox.textContent = 'New password must be at least 12 characters.';
+    return;
+  }
+
+  if(newPassword !== confirmPassword){
+    errorBox.textContent = 'New passwords do not match.';
+    return;
+  }
+
+  saveBtn.disabled = true;
+  saveBtn.textContent = 'Saving...';
+
+  try {
+    const response = await fetch(`${API_AUTH}?action=change_password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      credentials: 'same-origin',
+      body: JSON.stringify({
+        currentPassword,
+        newPassword,
+        confirmPassword
+      })
+    });
+
+    const data = await response.json();
+
+    if(!response.ok || !data.ok){
+      throw new Error(data.error || 'Unable to change password.');
+    }
+
+    
+const wasRequired = SESSION?.mustChangePassword === true;
+
+if (SESSION) {
+  SESSION.mustChangePassword = false;
+}
+
+document.getElementById('changePasswordModal').remove();
+
+if (wasRequired) {
+  await loadAllData();
+
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('appRoot').style.display = 'grid';
+
+  goTo('dashboard', null);
+}
+
+alert('Password changed successfully!');
+
+
+  } catch(error){
+    errorBox.textContent = error.message || 'Something went wrong.';
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'Save Password';
+  }
+}
+
+
 async function handleLogout(){
   closeScanner(); // make sure the camera isn't left running behind the login screen
   if(LIVE){
@@ -4943,14 +5368,28 @@ async function handleLogout(){
 /* ============================================================
    Init
    ============================================================ */
+
 (async function init(){
   await checkBackend();
   setLoginModeUI();
+
   if(SESSION){
-    // an existing PHP session cookie was already valid — skip the login form
+
+    // Require a password change even after refreshing the page.
+    if(SESSION.mustChangePassword){
+      document.getElementById('loginScreen').style.display = 'flex';
+      document.getElementById('appRoot').style.display = 'none';
+
+      openChangePassword();
+      return;
+    }
+
+    // Normal login session — open the dashboard.
     await loadAllData();
+
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('appRoot').style.display = 'grid';
+
     goTo('dashboard', null);
   }
 })();
