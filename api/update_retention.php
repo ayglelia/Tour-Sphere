@@ -38,11 +38,11 @@ if ($type === '' || $years < 1 || $password === '') {
 $stmt = $pdo->prepare("
     SELECT id, email, password_hash, role
     FROM users
-    WHERE role = 'Admin'
+    WHERE id = ? AND role = 'Admin'
     LIMIT 1
 ");
 
-$stmt->execute();
+$stmt->execute([$_SESSION['user']['id']]);
 
 $admin = $stmt->fetch();
 
