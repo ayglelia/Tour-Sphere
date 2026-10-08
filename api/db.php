@@ -9,7 +9,9 @@ $config = [
     'db_port' => getenv('DB_PORT') ?: 3306,
     'db_name' => getenv('DB_DATABASE'),
     'db_user' => getenv('DB_USERNAME'),
-    'db_pass' => getenv('DB_PASSWORD'),
+    'db_pass' => getenv('DB_PASSWORD') !== false
+    ? getenv('DB_PASSWORD')
+    : (getenv('DB_ALLOW_EMPTY_PASSWORD') === '1' ? '' : false),
 ];
 
 if (
@@ -38,6 +40,36 @@ try {
 } catch (PDOException $e) {
     http_response_code(500);
     die(json_encode(['error' => 'Database connection failed: ' . $e->getMessage()]));
+}
+
+
+if (!empty($_SESSION['user']['id'])) {
+    $check = $pdo->prepare(
+        'SELECT must_change_password FROM users WHERE id = ?'
+    );
+    $check->execute([$_SESSION['user']['id']]);
+    $account = $check->fetch();
+
+    if (!$account) {
+        $_SESSION = [];
+        session_destroy();
+        http_response_code(401);
+        die(json_encode(['error' => 'Account no longer exists.']));
+    }
+
+    $_SESSION['user']['mustChangePassword'] =
+        (bool)$account['must_change_password'];
+
+    if (
+        $_SESSION['user']['mustChangePassword'] &&
+        basename($_SERVER['SCRIPT_NAME'] ?? '') !== 'auth.php'
+    ) {
+        http_response_code(403);
+        die(json_encode([
+            'error' => 'You must change your temporary password before accessing TourSphere.',
+            'mustChangePassword' => true
+        ]));
+    }
 }
 
 function json_input(): array {
