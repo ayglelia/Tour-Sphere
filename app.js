@@ -989,6 +989,29 @@ function computeAlerts(){
 
 }
 
+function dashboardGreeting() {
+  const hour = Number(new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Manila',
+    hour: '2-digit',
+    hourCycle: 'h23'
+  }).format(new Date()));
+
+  return hour < 12
+    ? 'Good morning'
+    : hour < 18
+      ? 'Good afternoon'
+      : 'Good evening';
+}
+
+setInterval(() => {
+  const heading = document.getElementById('dashboardGreeting');
+
+  if (heading) {
+    heading.textContent =
+      `${dashboardGreeting()} — here's today at a glance`;
+  }
+}, 60000);
+
 function renderDashboard(){
   const alerts = computeAlerts();
   const onSite = DB.visitors.filter(v=>v.status==='Checked-in').length;
@@ -997,9 +1020,7 @@ function renderDashboard(){
 
   return `
   <div class="page-head">
-    <div class="eyebrow">Centralized Overview</div>
-    <h2>Good morning — here's today at a glance</h2>
-    <p class="sub">Branch-wide status across all six subsystems, pulled live from bookings, visitor logs, documents, and contracts.</p>
+    <h2 id="dashboardGreeting">${dashboardGreeting()} — here's today at a glance</h2>
   </div>
   <div class="grid cols-4">
     ${card('',`<div class="num">${bookingsToday}</div><div class="lbl">Facility bookings today</div><span class="delta up">on schedule</span>`,'class="card stat"')}
@@ -1334,7 +1355,6 @@ function facilitiesCheckin(){
   <div class="grid cols-2">
     ${card('Generate Check-in QR', `
       <div class="field"><label>Booking</label><select id="ci_booking" onchange="refreshFacilityQR(this.value)">${opts || '<option>No approved bookings</option>'}</select></div>
-      <p style="font-size:12px;color:var(--muted);">The QR resolves live against this booking's record — scanning after cancellation or completion will show an invalid stamp instead of granting access.</p>
     `)}
     <div id="facilityTagWrap">${facilityTagFor(first)}</div>
   </div>
@@ -1424,8 +1444,7 @@ function visitorsPass(){
   if(v) queueQR('qr_visitor', verifyUrl('visitor', v.id));
   return `
   <div class="grid cols-2">
-    ${card('Select Visitor', `<div class="field"><label>Visitor</label><select id="ps_visitor" onchange="refreshVisitorQR(this.value)">${opts || '<option>No visitors registered</option>'}</select></div>
-      <p style="font-size:12px;color:var(--muted);">Each pass is time-bound to the visit date and is revoked automatically at check-out.</p>`)}
+    ${card('Select Visitor', `<div class="field"><label>Visitor</label><select id="ps_visitor" onchange="refreshVisitorQR(this.value)">${opts || '<option>No visitors registered</option>'}</select></div>`)}
     <div id="visitorTagWrap">${visitorTagFor(v)}</div>
   </div>`;
 }
@@ -1930,11 +1949,6 @@ function documentsTagging(){
           </select>
         </div>
 
-        <p style="font-size:12px;color:var(--muted);">
-          Select the exact document version you want to place on the
-          physical archive folder. Scanning the QR code will resolve
-          directly to that version.
-        </p>
 
       `)}
 
@@ -2759,18 +2773,9 @@ function retentionCompliance(){
 
   // Checklist card
   const listing = card(
-    'Compliance Checklist',
-    checklistContent + `
-      <p style="
-        font-size:12px;
-        color:var(--muted);
-        margin-top:10px;
-      ">
-        Checklist changes are recorded with the authorized user's name
-        and the date and time of the change.
-      </p>
-    `
-  );
+  'Compliance Checklist',
+  checklistContent
+);
 
   // Always show checklist first and Add/Edit form below
   return listing + addForm;
@@ -3905,8 +3910,7 @@ function contractsVerify(){
   if(c) queueQR('qr_contract', verifyUrl('contract', c.id));
   return `
   <div class="grid cols-2">
-    ${card('Select Contract to Verify', `<div class="field"><label>Contract</label><select id="vf_contract" onchange="refreshContractQR(this.value)">${opts || '<option>No contracts on file</option>'}</select></div>
-      <p style="font-size:12px;color:var(--muted);">Printed on the physical contract. Scanning always queries live status — a terminated or held contract will show as such even if the paper copy still reads "Active".</p>`)}
+    ${card('Select Contract to Verify', `<div class="field"><label>Contract</label><select id="vf_contract" onchange="refreshContractQR(this.value)">${opts || '<option>No contracts on file</option>'}</select></div>`)}
     <div id="contractTagWrap">${contractTagFor(c)}</div>
   </div>`;
 }
@@ -5894,22 +5898,8 @@ async function terminateContract(id){
 /* ============================================================
    Authentication
    ============================================================ */
-function setLoginModeUI(){
-  const badge = document.getElementById('loginModeBadge');
-  const note = document.getElementById('loginModeNote');
-  const roleField = document.getElementById('demoRoleField');
-  document.getElementById('login_role').innerHTML = ROLES.map(r=>`<option>${r}</option>`).join('');
-  roleField.style.display = 'none';
-  if(LIVE){
-    badge.textContent = '● Connected to database';
-    badge.style.color = 'var(--teal)'; badge.style.background = '#E7F8EF';
-    note.textContent = 'Sign in with a staff account stored in MySQL.';
-  } else {
-    badge.textContent = '● Database unavailable';
-    badge.style.color = 'var(--rust)'; badge.style.background = '#FDECEC';
-    note.textContent = 'TourSphere requires the PHP/MySQL backend. Offline/demo mode has been removed.';
-  }
-}
+function setLoginModeUI() {}
+
 async function handleLogin(e){
   e.preventDefault();
   const email = document.getElementById('login_email').value.trim();

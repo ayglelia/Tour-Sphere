@@ -19,12 +19,9 @@
       <div class="mark">T</div>
       <h1>TourSphere</h1>
       <p class="tag">TOUR &amp; TRAVEL ADMIN SYSTEM</p>
-      <p class="blurb">Centralized facilities, visitor, document, retention, legal, and contract management for a single-branch travel and tours agency — with QR codes that verify live against the database.</p>
     </div>
     <div class="login-box">
-      <div class="login-mode-badge" id="loginModeBadge"></div>
       <h2>Staff Sign In</h2>
-      <p class="sub" id="loginModeNote">Checking database connection…</p>
       <form id="loginForm" onsubmit="handleLogin(event)">
         <div class="field"><label>Email</label><input type="email" id="login_email" required placeholder="you@toursphere.ph" autocomplete="username"></div>
         
@@ -47,10 +44,6 @@
   </div>
 </div>
 
-        <div class="field" id="demoRoleField">
-          <label>Role (demo mode only)</label>
-          <select id="login_role"></select>
-        </div>
         <button class="btn" type="submit" style="width:100%;">Sign in</button>
       </form>
       <p class="login-error" id="loginError"></p>
@@ -92,6 +85,6 @@
   </div>
 </div>
 
-<script src="app.js?v=8"></script>
+<script src="app.js?v=9"></script>
 </body>
 </html>
